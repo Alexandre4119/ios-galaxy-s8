@@ -84,6 +84,8 @@ bash tools/dreamlte/make-boot.sh xnu/out/kernel.development.a5xelte backup/BOOT.
 
 The script builds the ADT (`tools/mkadt_dreamlte.py`) and the payload (`tools/mkpayload.py`), compiles the `shim/dreamlte` loader and packs BOOT with the stock header.
 
+> Run `tools/dreamlte/make-boot.sh`, not `shim/build.sh` or `shim/dreamlte/build.sh` directly. Those are internal steps it calls for you (and the top-level `shim/build.sh` is unrelated donor tooling, not part of this flow) — called on their own they'll fail looking for a `payload.bin` that was never built.
+
 Flash it (phone in TWRP):
 
 ```bash
@@ -116,6 +118,12 @@ This saves `logs/sweetlog-boot1.txt` (the kernel console from disk) and `logs/pm
 ## Back to Android
 
 Restore BOOT and Data from the TWRP backup (or `dd` the saved `BOOT.img` back to `sda7`), then run "Format Data" in TWRP.
+
+## Troubleshooting
+
+- **`xnu` CI job fails instantly with a "scheduled macOS runner image brownout" annotation.** GitHub periodically retires old hosted runner images; the workflow is pinned to whichever one currently has a compatible Xcode. If this happens again, check which `macos-*` images GitHub still serves and bump `runs-on` in `.github/workflows/xnu.yml` — `xnu/patches/0083-xcode27-iig-kernel-content.patch` already backports the `IORPC.kernelContent` field newer Xcode/`iig` releases expect, so a newer runner/Xcode generally just works; the `Deps` step's `xcrun --find iig` / `xcodebuild -version` output in the run log confirms what it actually picked.
+- **`No space left on device` during the kernel build, `shim/build.sh`, or `tools/dreamlte/make-boot.sh`.** This is usually `/tmp`, not your actual disk — many distros cap it (tmpfs or a small partition) well below your real free space. Point `TMPDIR` somewhere with room before the failing command, e.g. `TMPDIR=/mnt/hdd/tmp bash tools/dreamlte/make-boot.sh ...` (after `mkdir -p` that directory). Check with `df -h /tmp` if unsure.
+- **`gh run download` fails the same way** (`error writing zip archive: ... no space left on device`): same fix, `TMPDIR=/path/with/room gh run download ...`.
 
 ## Boot arguments
 
