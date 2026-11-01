@@ -1,0 +1,45 @@
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ SweetCPU::startCPU
+ 		 * core stays dark and IOKit's registration wait times out
+ 		 * ("CPU registration timeout").
+ 		 */
++		/*
++		 * 0126 alone wasn't enough: the per-core gate lands in a clock
++		 * domain (CMU_CPUCL0) that is still gated off, because S-Boot
++		 * only ever powers the A53/CLUSTER1 cluster. The downstream
++		 * kernel's cluster0_on sequence ungates that domain once,
++		 * before any CLUSTER0 (M2) core is brought up.
++		 */
++		if (((cpu->phys_id >> 8) & 0xf) == 0) {
++			static int cluster0_enabled;
++			if (!cluster0_enabled) {
++				cluster0_enabled = 1;
++				volatile uint32_t *qch = (volatile uint32_t *)(pmu + 0x3C20);
++				volatile uint32_t *qch_st = (volatile uint32_t *)(pmu + 0x3C24);
++				volatile uint32_t *clkstop = (volatile uint32_t *)(pmu + 0x45C0);
++				volatile uint32_t *clkstop_st = (volatile uint32_t *)(pmu + 0x45C4);
++				volatile uint32_t *seqopt = (volatile uint32_t *)(pmu + 0x2488);
++				static vm_offset_t dd_cluster;
++				if (dd_cluster == 0) {
++					dd_cluster = ml_io_map(0x16840000, 0x2000);
++				}
++				volatile uint32_t *dd4 = (volatile uint32_t *)(dd_cluster + 0x1000);
++				*qch |= 0x1u;
++				for (int i = 0; i < 10000 && (*qch_st & 0x1u) == 0; i++) {
++					IODelay(1);
++				}
++				*clkstop |= 0x1u;
++				for (int i = 0; i < 10000 && (*clkstop_st & 0x1u) == 0; i++) {
++					IODelay(1);
++				}
++				*dd4 |= 0x1u;
++				*seqopt &= ~0x1u;
++				__builtin_arm_dsb(DSB_SY);
++				IOLog(CPU_PORT_NAME " CPU: CLUSTER0 (M2) cluster enable done, qch=0x%x clkstop=0x%x seqopt=0x%x\n",
++				    *qch, *clkstop, *seqopt);
++			}
++		}
+ 		if (((cpu->phys_id >> 8) & 0xf) == 0) {
+ 			static vm_offset_t dd;
+ 			if (dd == 0) {
