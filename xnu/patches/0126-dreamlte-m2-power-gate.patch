@@ -1,0 +1,32 @@
+--- a/iokit/Kernel/arm/SweetCPU.cpp
++++ b/iokit/Kernel/arm/SweetCPU.cpp
+@@ SweetCPU::startCPU
+ 		cfg[0] |= 0xf;                  /* CPUn_CONFIGURATION: LOCAL_PWR_CFG */
+ 		for (int i = 0; i < 10000 && (cfg[1] & 0xf) != 0xf; i++) {
+ 			IODelay(1);
+ 		}
++		/*
++		 * Mongoose M2 cores (CLUSTER0, phys_id aff1=0) need a second PMU
++		 * gate besides CPUn_CONFIGURATION: DDn_DD_DA_INPUT_0, bit 0, base
++		 * 0x16840000, offset n*0x400 (n = core within the M2 cluster).
++		 * The A53 cluster's "on" sequence (CLUSTER1, aff1=1) has no
++		 * equivalent register -- checked against the downstream kernel's
++		 * pmucal_cpu_exynos8895.h core0x_on vs. core1x_on arrays. Without
++		 * this write, a CLUSTER0 core never actually powers up: PSCI
++		 * CPU_ON succeeds and CPUn_CONFIGURATION reads back 0xF, but the
++		 * core stays dark and IOKit's registration wait times out
++		 * ("CPU registration timeout").
++		 */
++		if (((cpu->phys_id >> 8) & 0xf) == 0) {
++			static vm_offset_t dd;
++			if (dd == 0) {
++				dd = ml_io_map(0x16840000, 0x2000);
++			}
++			volatile uint32_t *dd_input = (volatile uint32_t *)
++			    (dd + (cpu->phys_id & 0xf) * 0x400);
++			*dd_input |= 0x1u;
++			__builtin_arm_dsb(DSB_SY);
++		}
+ 		IOLog(CPU_PORT_NAME " CPU: cpu=%u first CPU_ON rc=%d, PMU power-up cfg=0x%x status=0x%x\n",
+ 		    getCPUNumber(), rc0, cfg[0], cfg[1]);
+ 	}
