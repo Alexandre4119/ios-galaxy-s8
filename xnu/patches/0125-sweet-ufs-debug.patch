@@ -1,0 +1,65 @@
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ static void
+ sweet_ufs_strategy(buf_t bp)
+ {
+ 	int error = 0;
+ 	caddr_t vaddr = NULL;
+ 	uint64_t off = (uint64_t)buf_blkno(bp) * su.secsize;
+ 	uint32_t count = buf_count(bp);
+ 	uint64_t part_bytes = su.nblocks * UFS_BLOCK;
+ 
++	printf("SWEET UFS DBG: strategy blkno=%lld secsize=%u off=%llu count=%u flags=0x%x\n",
++	    (long long)buf_blkno(bp), su.secsize, off, count, buf_flags(bp));
++
+ 	buf_setresid(bp, count);
+ 	if (!(buf_flags(bp) & B_READ)) {
+ 		error = EROFS;
+ 		goto done;
+ 	}
+ 	if (off > part_bytes || count > part_bytes - off) {
+ 		error = EINVAL;
+ 		goto done;
+ 	}
+ 	if (count == 0) {
+ 		goto done;
+ 	}
+ 	if (buf_map(bp, &vaddr)) {
+ 		error = EIO;
+ 		goto done;
+ 	}
+ 
+ 	lck_mtx_lock(&sweet_ufs_lock);
+ 	for (uint32_t done = 0; done < count;) {
+ 		uint64_t pos = off + done;
+ 		uint64_t lba = pos / UFS_BLOCK;
+ 		uint32_t skip = (uint32_t)(pos % UFS_BLOCK);
+ 		uint32_t want = MIN(count - done, BOUNCE_SIZE - skip);
+ 		uint32_t blocks = (skip + want + UFS_BLOCK - 1) / UFS_BLOCK;
++		printf("SWEET UFS DBG: chunk pos=%llu lba=%llu(+first=%llu) skip=%u want=%u blocks=%u\n",
++		    pos, lba, su.first_block + lba, skip, want, blocks);
+ 		error = ufs_read_blocks(su.first_block + lba, blocks);
+ 		if (error) {
++			printf("SWEET UFS DBG: ufs_read_blocks failed error=%d\n", error);
+ 			break;
+ 		}
++		{
++			const uint8_t *b = (const uint8_t *)(su.dma + DMA_BOUNCE + skip);
++			printf("SWEET UFS DBG: bounce[skip..skip+16) = "
++			    "%02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x %02x%02x\n",
++			    b[0],b[1],b[2],b[3],b[4],b[5],b[6],b[7],
++			    b[8],b[9],b[10],b[11],b[12],b[13],b[14],b[15]);
++		}
+ 		memcpy(vaddr + done, (const void *)(su.dma + DMA_BOUNCE + skip), want);
+ 		done += want;
+ 		buf_setresid(bp, count - done);
+ 	}
+ 	lck_mtx_unlock(&sweet_ufs_lock);
+ 	buf_unmap(bp);
+ 
+ done:
+ 	if (error) {
+ 		buf_seterror(bp, error);
+ 	}
+ 	buf_biodone(bp);
+ }
