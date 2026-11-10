@@ -90,8 +90,78 @@ to the pmsg zone and read from TWRP as `/sys/fs/pstore/pmsg-ramoops-0`.
   SwapBegin never completed. **Boot 19 (`sweetfb_native=1`, 1440x2960): iOS
   lock screen on the Galaxy S8**, one CPU, CPU rendering, ~15 min to reach it.
 
+## CLUSTER0 (Mongoose M2) bring-up attempt (2026-11)
+
+`cpus=5` (the fifth core, the first of the Mongoose M2/"big" cluster) panics
+with `cpu=4 NOT registered (IOKit matching timeout)`. Two patches tried against
+real register facts from the downstream kernel
+(`github.com/sonsation/kernel_dreamlte`, `pmucal_cpu_exynos8895.h`):
+
+- `0126`: a per-core PMU gate (`DDn_DD_DA_INPUT_0`, base `0x16840000`, bit 0)
+  that CLUSTER1 (A53) cores don't need.
+- `0127`: `0126` alone wasn't enough, so this adds a one-time CLUSTER0 clock-
+  domain ungate (CMU_CPUCL0 QCH/CLKSTOP/SEQOPT at PMU offsets `0x3C20`/
+  `0x45C0`/`0x2488`, plus the same `DDn` block's index-4 cell) before any
+  CLUSTER0 core starts.
+
+Neither fixed the panic on the real phone. Both are inert when `cpus<=4`
+(gated behind `aff1==0`, which only CLUSTER0 cores hit), so no revert of the
+patches themselves was needed — **stopped here and reverted the boot-arg to
+the known-stable `cpus=4`.** CLUSTER0 bring-up is parked until there's a new
+lead (most likely: the DDn write or the CMU ungate is targeting the wrong
+register, or an SMC/DTZPC-style call is still missing for this cluster, as
+turned out to be the case for the GPU's own domain below).
+
+## Mali GPU bring-up, first pass (2026-11)
+
+Porting the working Mali-G72/Exynos 9810 (Galaxy S9+) kernel GPU driver from
+`github.com/danstronics/ios-s9plus-exynos` (HakiOS, APSL-2.0) to this phone's
+Mali-G71/Exynos 8895. `0128` adds `bsd/dev/sweet_acpm.c` (the ACPM mailbox/SRAM
+IPC needed to reach the PMIC over the always-on core) and `bsd/dev/sweet_mali.c`
+(GPU register map, reset, cores-on), wired in behind boot-arg `mali=N` the same
+way `a5xelte_touch_probe` is wired in. Not yet run on the phone.
+
+Verified against the real downstream Exynos 8895 kernel source
+(`github.com/sonsation/kernel_dreamlte`), not guessed: the GPU's registers
+(`0x13900000`, IRQs 60/61/59), the G3D power-domain register pair in PMU_ALIVE
+(`+0x40E0`/`+0x40E4`, mask `0xF` — the same PMU_ALIVE block the CPU work above
+already maps), the CMU_G3D PLL/mux offsets (`PLL_CON0` `+0x120`, the mux
+`+0x100`, `DIV_CLK_G3D_BUSP` `+0x1804`), the PMIC chip (S2MPS17, not the 9810's
+S2MPS18) and its BUCK6/vdd_g3d register pair (`B6CTRL` `0x23`, `B6OUT1` `0x24`,
+300 mV + 6.25 mV a step, capped at 850 mV here vs. 950 mV on the 9810), the
+ACPM mailbox/SRAM addresses and the `initdata-base` offset `0x2850`, and the
+corrected GPU_ID check for a G71 (`(GPU_ID >> 16) & 0xf00f == 0x6000`, not the
+9810 G72 driver's `0x6001`).
+
+**Not yet verified — flagged in `sweet_mali.c`'s own header, needs on-device
+log output to confirm or correct:**
+
+- No DTZPC/TrustZone-protection SMC call is made after the domain's power-on
+  (the 9810 port makes one; the equivalent address for the 8895's G3D hasn't
+  been found in the downstream source yet). If step 4 (GPU_ID) never reads
+  back a real G71 ID right after a fresh power-on, this is the first thing to
+  check — possibly the same kind of missing step that's blocking CLUSTER0
+  above.
+- `PLL_CON2_PLL_G3D` (assumed `+0x128`, CON0+8 by convention) and
+  `DIV_CLK_G3D_BUSD` (assumed `+0x1800`, alongside the confirmed
+  `DIV_CLK_G3D_BUSP` `+0x1804`) are not independently confirmed in the
+  downstream source.
+- The G3D PLL is a `PLL_1052X` (the 9810 used `PLL_1018X`); this first pass
+  leaves the PLL at whatever S-Boot set rather than guess its M/P/S rate
+  table.
+- `SRAM_FIRST` (the APM SRAM's usable-page boundary) is carried over
+  unchanged from the 9810 port as a conservative default.
+
+Job submission (test jobs, GPU page tables), the IOKit-facing service/user
+client, and any Mesa/Panfrost userspace work are explicitly out of scope for
+this first pass — this patch only brings the hardware up to "cores powered,"
+nothing more.
+
 ## Next
 
 1. CI kernel build; first boot target: loader log + XNU entry marker, then the
    early XNU console on the S8 screen.
 2. UFS driver for the root filesystem (USERDATA), then the iPhone X root.
+3. Boot with `mali=6` and read the pstore log: confirm or correct the four
+   flagged GPU facts above, starting with whether GPU_ID reads back a real G71
+   ID at all after the power-on (DTZPC is the top suspect if it doesn't).
