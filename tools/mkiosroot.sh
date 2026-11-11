@@ -87,11 +87,21 @@ copy "$work/sysos/root" "$work/root/private/preboot/Cryptexes/OS"
 copy "$work/appos/root" "$work/root/private/preboot/Cryptexes/App"
 
 # Shared cache where dyld looks at ignition level 1: hard links, no extra space.
+# Some builds (observed: iPhone X 16.7.16/20H392) ship the shared cache split
+# already in the base OS root instead of the SystemOS cryptex, leaving this
+# cryptex directory empty or absent -- nothing to link in that case.
 dsc=private/preboot/Cryptexes/OS/System/Library/Caches/com.apple.dyld
-sudo mkdir -p "$work/root/System/Library/Caches/com.apple.dyld"
-for f in "$work/root/$dsc"/*; do
-	sudo ln "$f" "$work/root/System/Library/Caches/com.apple.dyld/${f##*/}"
-done
+shopt -s nullglob
+dsc_files=("$work/root/$dsc"/*)
+shopt -u nullglob
+if [[ ${#dsc_files[@]} -gt 0 ]]; then
+	sudo mkdir -p "$work/root/System/Library/Caches/com.apple.dyld"
+	for f in "${dsc_files[@]}"; do
+		sudo ln "$f" "$work/root/System/Library/Caches/com.apple.dyld/${f##*/}"
+	done
+else
+	echo "no dyld shared cache under the SystemOS cryptex ($dsc): assuming it is already in the base OS root"
+fi
 
 # dyld does not search the cryptexes at ignition level 1: hard-link every
 # cryptex file that has no counterpart in the OS root (libobjc-trampolines,
