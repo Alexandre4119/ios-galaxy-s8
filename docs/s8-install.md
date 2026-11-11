@@ -71,6 +71,12 @@ In PowerShell:
 tools\dreamlte\flash-chunks.ps1 -Image \\wsl.localhost\Ubuntu\root\ios16-root.img -Manifest ios16-root.json -Partition USERDATA
 ```
 
+On Linux/macOS, with just `adb` and `python3` (no PowerShell/Windows/WSL needed):
+
+```bash
+python3 tools/dreamlte/flash-chunks.py ios16-root.img ios16-root.json --partition USERDATA
+```
+
 The kernel uses the last 4 MiB of USERDATA as its log ring; a 16 GB image does not reach it.
 
 ## 5. BOOT image
