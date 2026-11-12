@@ -120,6 +120,11 @@ for c in OS App; do
 	done
 done
 
+# devfs mounts itself over this directory at boot (devfs_kernel_mount);
+# without it present in the rootfs that mount fails with ENOENT, so there is
+# never a /dev/null and launchd panics trying to reserve its stdio.
+sudo install -d -o 0 -g 0 -m 0755 "$work/root/dev"
+
 # logd's log stores, normally made at restore: it checks owner _logd (272)
 # and mode, plus a .migrated marker, else asks a helper and crashes
 # ("BUG IN LIBTRACE: Failed to migrate directory").
