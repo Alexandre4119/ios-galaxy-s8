@@ -3,6 +3,15 @@
 # `install -o 272`, which current GNU coreutils rejects for a UID with no
 # passwd entry), then apply tools/sweet-root-tweaks.py and fsck.
 #   finish-iosroot.sh IMAGE
+#
+# DEVICE-OBSERVED RISK: mkiosroot.sh now applies sweet-root-tweaks.py itself,
+# in the same mount session it uses to populate the image. Prefer that over
+# this script. A SEPARATE later mount+modify pass on an already-fsck'd image,
+# like this script does, has corrupted the catalog B-tree on a real phone
+# (Linux's hfsplus.ko node-split path): a catalog node read back zeroed and
+# /sbin/launchd could no longer be found at all, even though nothing touched
+# launchd itself. Only use this on an image mkiosroot.sh already finished,
+# as a one-off fixup, and reflash/retest carefully afterward.
 set -euo pipefail
 img=$1
 here=$(cd "$(dirname "$0")/.." && pwd)

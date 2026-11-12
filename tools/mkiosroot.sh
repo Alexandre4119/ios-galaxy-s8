@@ -142,6 +142,18 @@ printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
 	'<plist version="1.0"><dict><key>KeyBagKeys</key><data>U1dFRVQ=</data></dict></plist>' |
 	sudo install -m 0600 -o 0 -g 0 /dev/stdin "$work/root/private/var/keybags/systembag.kb"
 
+# The SWEET/A5XELTE bring-up tweaks (CommCenter removed, Setup Assistant
+# skipped, migration/launchd/audio prefs, ...), applied in this same mount
+# session rather than as a later, separate mount+modify pass: inserting many
+# new catalog entries into an already-closed, already-fsck'd HFS+ volume
+# through a second loop mount has been observed to corrupt its catalog
+# B-tree (Linux's hfsplus.ko node-split path) -- a catalog node reads back
+# zeroed (hfs_swap_BTNode: numRecords 0) and /sbin/launchd can no longer be
+# found at all (kern_exec.c panic, errno 5), even though nothing touched
+# launchd itself. Doing it here, before the one unmount+fsck below, avoids
+# that second write session.
+python3 "$(cd "$(dirname "$0")" && pwd)/sweet-root-tweaks.py" "$work/root"
+
 df -h "$work/root"
 sudo umount "$work/root"
 # Linux hfsplus decomposes some non-ASCII names (localized Shortcuts examples)

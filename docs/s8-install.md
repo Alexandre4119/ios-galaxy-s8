@@ -52,10 +52,9 @@ ipsw img4 im4p extract Firmware/all_flash/DeviceTree.d22ap.im4p -o research/ipsw
 
 ```bash
 sudo tools/mkiosroot.sh OS.dmg SystemOS.dmg AppOS.dmg ios16-root.img 16G
-sudo tools/dreamlte/finish-iosroot.sh ios16-root.img
 ```
 
-`finish-iosroot.sh` creates the log directories, applies `tools/sweet-root-tweaks.py` (skips Setup, seeds the activation state, disables watchdogs, and so on) and checks the filesystem.
+`mkiosroot.sh` creates the log directories, applies `tools/sweet-root-tweaks.py` (skips Setup, seeds the activation state, disables watchdogs, and so on) and checks the filesystem -- all in the one mount session it uses to populate the image. Device-verified: doing the tweaks as a *separate*, later mount+modify pass on an already-built image (`tools/dreamlte/finish-iosroot.sh`, now a fallback only) has corrupted the catalog B-tree on real hardware and made `/sbin/launchd` unreadable. Don't run `finish-iosroot.sh` on an image fresh out of `mkiosroot.sh` -- it already has the tweaks.
 
 ## 4. Write the root to USERDATA
 
