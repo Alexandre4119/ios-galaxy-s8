@@ -45,7 +45,30 @@ jobs:
 
       - name: Build
         working-directory: dxb
-        run: bash build.sh
+        env:
+          MAKEFLAGS: -k
+        run: |
+          set -o pipefail
+          bash build.sh 2>&1 | tee build.log
+
+      - name: Extract build errors
+        if: failure()
+        working-directory: dxb
+        run: |
+          {
+            echo '=== error lines ==='
+            grep -n -iE 'error:|fatal error|undefined reference|No such file|make(\[[0-9]+\])?: \*\*\*|Error [0-9]+' build.log | tail -300 || true
+            echo '=== tail ==='
+            tail -500 build.log
+          } > errors.txt
+          wc -c errors.txt
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: a50-errors-${{ matrix.os }}
+          path: dxb/errors.txt
+          if-no-files-found: warn
 
       - name: Collect
         if: always()
