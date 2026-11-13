@@ -19,18 +19,18 @@
 
 ## 1. Build the A50 XNU kernel
 
-The kernel is built by the GitHub Actions workflow `xnu` with
+The kernel is built by the GitHub Actions workflow `a50` with
 `MACHINE_CONFIG=A50`:
 
 1. Push this tree to your fork.
-2. Actions → **xnu** → Run workflow:
-   - `macos_version`: `13.5`
-   - `kernel_config`: `DEVELOPMENT`
-   - `machine_config`: `A50`
-3. Download the `xnu-kernel` artifact and take `kernel.development.*`.
+2. Actions → **a50** → Run workflow. The workflow fixes macOS 13.5,
+   `DEVELOPMENT` and `MACHINE_CONFIG=A50`; it has no inputs.
+3. Download a successful `a50-kernel-macos-15` or
+   `a50-kernel-macos-15-intel` artifact and take `kernel.development.a50`.
 
 The A50 job uses `-mcpu=cortex-a53 -march=armv8-a+crypto` (no LSE), like the
-S8 job. Patch `0129-a50.patch` is applied by the normal patch replay.
+S8 job. Patches `0129-a50.patch` and `0130-a50-touch-i2c-delay.patch` are
+applied by the normal patch replay.
 
 ## 2. Build the loader and BOOT image
 
@@ -41,8 +41,8 @@ cd shim/a50
 ./build.sh                       # needs aarch64-linux-gnu-gcc
 ```
 
-To pack a BOOT image you also need a stock A50 BOOT image (for the Samsung
-header/DTBH) and a kernel:
+To pack a BOOT image you also need a stock A50 BOOT image (for the A50 v1
+header; there is no DTB section) and a kernel:
 
 ```sh
 tools/a50/make-boot.sh \
@@ -51,6 +51,14 @@ tools/a50/make-boot.sh \
   /tmp/a50-boot.img \
   debug=0xc serial=3 cpus=1 keepsyms=1 wdt=-1
 ```
+
+The A50 packer is `tools/a50/mkboot_a50.py`; it reuses the stock v1
+header and recomputes the v1 id. `tools/a50/bootimg_info.py` prints and
+verifies the result. A OneUI 8.5 A50 custom-ROM boot image (header v1,
+`SRPRL05B007KU`) or a public pre-Ubuntu-Touch A50 BOOT backup is a usable
+donor; prefer a dump of your own BOOT partition when you have one. The
+packer omits the stock AVB footer and appends `SEANDROIDENFORCE`, so an
+unlocked bootloader and an AVB-disabled vbmeta may still be required.
 
 `make-boot.sh` runs `mkadt_a50.py`, `mkpayload.py` and
 `shim/a50/build.sh`, then prints the image header. The default boot-args

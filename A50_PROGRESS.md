@@ -1,7 +1,8 @@
 # Galaxy A50 port log
 
 Target: SM-A505F (`a50`, Exynos 9610), ported from the Galaxy S8 tree.
-Status: **scaffold complete, not booted**. This file records what was
+Status: **kernel builds and the BOOT image packs; not booted on hardware**.
+This file records what was
 derived, added and actually checked, so the next session does not redo it.
 
 ## 2026-11-13 — initial port
@@ -27,9 +28,8 @@ derived, added and actually checked, so the next session does not redo it.
 
 ### Design choices
 
-- Reuse `MACHINE_CONFIG=A5XELTE` with `-DA50_BUILD` rather than a new XNU
-  board config; every A5XELTE guard still applies and the S8 target is
-  unchanged.
+- Use `MACHINE_CONFIG=A50` with a new `config/MASTER.arm64.a50`;
+  `-DA50_BUILD` keeps every A5XELTE guard, and the S8 target is unchanged.
 - Do not hardcode the framebuffer: the loader reads DECON IDMA0's Y address,
   fills `boot_args.Video`, and patches the ADT `a50-fbcon` reg.
 - Touch uses bit-banged i2c_4 (gpp1) instead of HSI2C, because the Exynos9610
@@ -78,3 +78,20 @@ derived, added and actually checked, so the next session does not redo it.
    TOP pinctrl function explicitly.
 4. Find the real USERDATA partition name/LUN for `ufsroot=`.
 5. Add a pstore/ramoops region before debugging early panics.
+
+## 2026-11-13 — first A50 kernel build
+
+- GitHub Actions run `43494797717`, artifact `a50-kernel-macos-15-intel`:
+  success. The arm64 runner was cancelled in the queue; the Intel artifact
+  is the one used.
+- Kernel: `kernel.development.a50`, 17,039,568 bytes, Mach-O arm64.
+- Loader: 32,304 bytes, SHA-256 `5f026a37782148c7f2ed8433ac6f4c384272fec45894e425debfd268e0918e05`.
+- ADT: 9,520 bytes; payload: 16,460,272 bytes.
+- BOOT: `a50-boot.img`, 16,496,656 bytes, SHA-256
+  `50ccea3fd132839e79897e497b4fc9e417b62902c4600c32bcfaa7cfcbca40a9`, packed
+  from the user-provided OneUI 8.5 A50 `boot.img` (header v1, no DTB). The v1
+  id verifies; the image fits the 57,671,680-byte BOOT partition.
+- Build fix: `0130-a50-touch-i2c-delay.patch` declares `IODelay` for the A50
+  bit-banged i2c path after the first build failed on an implicit declaration.
+- Not done: booting on hardware. The ADT has no `/product` node because
+  `research/ipsw-x/d22ap.adt` is absent; iOS userland may need it.
