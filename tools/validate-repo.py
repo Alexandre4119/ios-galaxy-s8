@@ -8,9 +8,9 @@ Checks:
      - Sequential numbering starting at 0001 with no duplicates or gaps.
      - Patch files are non-empty and have valid unified diff markers.
   2. Python script syntax:
-     - All tools/*.py compile cleanly via py_compile.
+     - All tools/**/*.py compile cleanly via py_compile.
   3. Shell script syntax:
-     - All tools/*.sh, shim/*.sh, and xnu/patches/*.sh pass bash -n check.
+     - All tools/**/*.sh, shim/**/*.sh, and xnu/patches/*.sh pass bash -n check.
 """
 import argparse, glob, os, py_compile, re, subprocess, sys
 
@@ -77,7 +77,8 @@ def validate_patches(verbose=False):
 
 def validate_python_scripts(verbose=False):
     tools_dir = os.path.join(REPO_ROOT, 'tools')
-    py_files = sorted(glob.glob(os.path.join(tools_dir, '*.py')))
+    py_files = sorted(glob.glob(os.path.join(tools_dir, '*.py')) +
+                      glob.glob(os.path.join(tools_dir, '*/*.py')))
     errors = []
 
     for path in py_files:
@@ -102,16 +103,25 @@ def validate_python_scripts(verbose=False):
 def validate_shell_scripts(verbose=False):
     sh_files = sorted(
         glob.glob(os.path.join(REPO_ROOT, 'tools/*.sh')) +
+        glob.glob(os.path.join(REPO_ROOT, 'tools/*/*.sh')) +
         glob.glob(os.path.join(REPO_ROOT, 'shim/*.sh')) +
+        glob.glob(os.path.join(REPO_ROOT, 'shim/*/*.sh')) +
         glob.glob(os.path.join(REPO_ROOT, 'xnu/patches/*.sh'))
     )
     errors = []
 
     for path in sh_files:
         rel = os.path.relpath(path, REPO_ROOT)
-        res = subprocess.run(['bash', '-n', path], capture_output=True, text=True)
+        # Feed LF-normalized text on stdin: a Windows checkout has CRLF, which
+        # bash rejects ("$'in\r'"), and MSYS strips backslashes from paths.
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            text = f.read().replace('\r\n', '\n')
+        # Bytes, not text=True: TextIOWrapper would turn '\n' back into CRLF
+        # on a Windows stdin pipe, which bash rejects.
+        res = subprocess.run(['bash', '-n'], input=text.encode('utf-8'),
+                             capture_output=True)
         if res.returncode != 0:
-            errors.append(f"{rel}: {res.stderr.strip()}")
+            errors.append(f"{rel}: {res.stderr.decode('utf-8', 'replace').strip()}")
         elif verbose:
             print(f"    [OK] {rel}")
 

@@ -1,0 +1,773 @@
+--- a/pexpert/pexpert/arm64/A5XELTE.h
++++ b/pexpert/pexpert/arm64/A5XELTE.h
+@@ -25,12 +25,34 @@
+ #define A5XELTE_VTIMER_INTID         27
+ 
+ /*
+- * Samsung Galaxy S8 (SM-G950F, dreamlte, Exynos 8895) build of this port.
+- * Same Samsung S-Boot handoff, GIC-400, 26 MHz timer and Cortex-A53 boot
+- * cluster as the A5; the board facts that differ are below.
++ * Samsung Galaxy A50 (SM-A505F, a50, Exynos 9610) build of this port.
++ * Same Samsung S-Boot handoff, GIC-400, 26 MHz physical timer and 4 KiB
++ * pages as the A5/S8. MACHINE_CONFIG=A50 adds -DA50_BUILD (and still
++ * -DARM64_BOARD_CONFIG_A5XELTE, so every A5XELTE guard applies).
+  */
++#if defined(A50_BUILD)
++#define A50                           1
++#define A5_FB_PHYS                    0           /* loader reads DECON IDMA0 */
++#define A5_FB_WIDTH                   1080
++#define A5_FB_HEIGHT                  2340
++#define A5_FB_STRIDE                  4320        /* bytes per row */
++#define A5_FB_2M_BLOCKS               5
++#define A5_ENTRY_MARKER_PHYS          0           /* no pstore address known */
++#define A5_BOOT_MPIDR                 0           /* A53 boot cluster */
++#define A5_KEYS_DEFAULT               1           /* GPA1 keys, no Home key */
++#define A5_TOUCH_DEFAULT              0           /* MMS100 starts separately */
++#define A5_DECON_BASE                 0x148b0000
++#define A5_UFS_NODE                   "/a50-ufs"
++/* Samsung's A50 DT says "use-physical-timer": PPI 14 = INTID 30. */
++#define A5_USE_PHYS_TIMER             1
++#undef A5XELTE_VTIMER_INTID
++#define A5XELTE_VTIMER_INTID         30
++#else
+ #define DREAMLTE                      1
++#endif
+ #if defined(DREAMLTE)
++#define A5_DECON_BASE                 0x12860000
++#define A5_UFS_NODE                   "/dreamlte-ufs"
+ #define A5_FB_PHYS                    0xcc000000  /* s3cfb.bootloaderfb */
+ #define A5_FB_WIDTH                   1440
+ #define A5_FB_HEIGHT                  2960
+@@ -49,7 +71,7 @@
+ #define A5_USE_PHYS_TIMER             1
+ #undef A5XELTE_VTIMER_INTID
+ #define A5XELTE_VTIMER_INTID         30
+-#else
++#elif !defined(A50)
+ #define A5_FB_PHYS                    0x67000000
+ #define A5_FB_WIDTH                   1080
+ #define A5_FB_HEIGHT                  1920
+--- a/makedefs/MakeInc.def
++++ b/makedefs/MakeInc.def
+@@ -29,7 +29,7 @@
+ else ifneq ($(findstring _host,$(RC_ProjectName)),)
+ SUPPORTED_ARM64_MACHINE_CONFIGS = NONE
+ else
+-SUPPORTED_ARM64_MACHINE_CONFIGS = BCM2837 T6000 T8101 T8103 VMAPPLE SWEET A5XELTE
++SUPPORTED_ARM64_MACHINE_CONFIGS = BCM2837 T6000 T8101 T8103 VMAPPLE SWEET A5XELTE A50
+ 
+ endif
+ 
+@@ -63,6 +63,7 @@
+ MACHINE_FLAGS_ARM64_BCM2837 = -DARM64_BOARD_CONFIG_BCM2837
+ MACHINE_FLAGS_ARM64_SWEET = -DARM64_BOARD_CONFIG_SWEET                -march=armv8.2-a+crypto
+ MACHINE_FLAGS_ARM64_A5XELTE = -DARM64_BOARD_CONFIG_A5XELTE            -mcpu=cortex-a53 -march=armv8-a+crypto
++MACHINE_FLAGS_ARM64_A50 = -DARM64_BOARD_CONFIG_A5XELTE -DA50_BUILD=1  -mcpu=cortex-a53 -march=armv8-a+crypto
+ 
+ 
+ #
+@@ -262,7 +263,7 @@
+ export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := $(shell echo $(CURRENT_ARCH_CONFIG) | tr A-Z a-z)
+ ifneq ($(filter arm64,$(ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG)),)
+ # These generic ARMv8 targets do not use Apple's arm64e pointer authentication.
+-ifeq ($(filter $(CURRENT_MACHINE_CONFIG),SWEET A5XELTE),)
++ifeq ($(filter $(CURRENT_MACHINE_CONFIG),SWEET A5XELTE A50),)
+ export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64e
+ endif
+ endif
+@@ -341,7 +342,7 @@
+ # Exynos7580 uses 4 KiB pages: TTBR1 has a 39-bit range. The macOS
+ # ARM_LARGE_MEMORY link address at -2 TiB is outside that range. Keep this
+ # board inside the existing compact kernel VA layout instead.
+-ifeq ($(CURRENT_MACHINE_CONFIG),A5XELTE)
++ifneq ($(filter $(CURRENT_MACHINE_CONFIG),A5XELTE A50),)
+ LARGE_MEMORY_DEFINE=-UARM_LARGE_MEMORY
+ ARM64_PLKSEG_ADDR  =0xfffffff004004000
+ ARM64_LINK_ADDR    =0xfffffff007004000
+--- a/bsd/conf/Makefile.template
++++ b/bsd/conf/Makefile.template
+@@ -45,7 +45,7 @@
+ SFLAGS+= -include meta_features.h
+ 
+ # This provider is built into SWEET; other boards use their normal kext.
+-ifneq ($(filter $(CURRENT_MACHINE_CONFIG),SWEET A5XELTE),)
++ifneq ($(filter $(CURRENT_MACHINE_CONFIG),SWEET A5XELTE A50),)
+ SWEET_PTHREAD_ROOT = $(SRCROOT)/bsd/pthread/sweet_libpthread
+ SWEET_PTHREAD_INC = -I$(SWEET_PTHREAD_ROOT) -I$(SWEET_PTHREAD_ROOT)/private -I$(SWEET_PTHREAD_ROOT)/include
+ sweet_pthread_init.o_INCFLAGS = $(SWEET_PTHREAD_INC)
+--- a/libkern/conf/Makefile.template
++++ b/libkern/conf/Makefile.template
+@@ -19,7 +19,7 @@
+ CFLAGS+= -include meta_features.h -DLIBKERN_KERNEL_PRIVATE -DOSALLOCDEBUG=1
+ SFLAGS+= -include meta_features.h
+ 
+-ifneq ($(filter $(CURRENT_MACHINE_CONFIG),SWEET A5XELTE),)
++ifneq ($(filter $(CURRENT_MACHINE_CONFIG),SWEET A5XELTE A50),)
+ SWEET_AES_ROOT = $(SRCROOT)/libkern/crypto/sweet_bearssl
+ SWEET_AES_INC = -I$(SWEET_AES_ROOT)/inc -I$(SWEET_AES_ROOT)/src
+ sweet_aes.o_INCFLAGS = $(SWEET_AES_INC)
+diff --git a/config/MASTER.arm64.a50 b/config/MASTER.arm64.a50
+new file mode 100644
+--- /dev/null
++++ b/config/MASTER.arm64.a50
+@@ -0,0 +1,115 @@
++#
++# a50 (SM-A505F, Exynos9610): same kernel options as the a5xelte board:
++# open-source arm64 assembly and pmap (nos_arm_asm, nos_arm_pmap). Apple's own SoC configs
++# link those from the KDK's closed lib<SOC>.os.<CONFIG>.a instead, which is
++# arm64e and Apple-silicon specific. kperf/kpc stay (xnu does not build without
++# kperf); osfmk/arm64/kpc.c is a stub with no hardware counters.
++#
++#
++# Mach Operating System
++# Copyright (c) 1986 Carnegie-Mellon University
++# Copyright 2001-2018 Apple Inc.
++#
++# All rights reserved.  The CMU software License Agreement
++# specifies the terms and conditions for use and redistribution.
++#  
++######################################################################
++#
++#  Master Apple configuration file (see the master machine independent
++#  configuration file for a description of the file format).
++#
++######################################################################
++#  
++#  Standard Apple OS Configurations:
++#  -------- ----- -- ---------------
++#
++#  KERNEL_BASE =    [ arm64 config_pmap_ppl medium msgb_large config_requires_u32_munging config_delay_idle_sleep config_proc_udata_storage config_uexc config_darkboot nos_arm_asm nos_arm_pmap ]
++#  KERNEL_RELEASE = [ KERNEL_BASE ]
++#  KERNEL_DEV =     [ KERNEL_BASE development mach_assert config_xnupost proc_ref_debug config_proc_resource_limits ]
++#  KERNEL_DEBUG =   [ KERNEL_BASE debug mach_assert config_xnupost config_waitq_stats config_workloop_debug config_proc_resource_limits ]
++#  BSD_BASE =       [ mach_bsd sysv_sem sysv_msg sysv_shm config_netboot config_imageboot psynch config_proc_uuid_policy config_coredump pgo config_personas ]
++#  BSD_RELEASE =    [ BSD_BASE ]
++#  BSD_DEV =        [ BSD_BASE config_vnguard ]
++#  BSD_DEBUG =      [ BSD_BASE config_vnguard ]
++#  FILESYS_BASE =   [ devfs fdesc fifo mockfs sweet_hfs fs_compression config_protect config_mnt_rootsnap config_rosv_startup config_mount_vm config_mount_prebootrecovery config_basesystemroot config_fse quota namedstreams config_imgsrc_access config_triggers config_searchfs config_volfs config_appledouble nullfs bindfs config_mnt_suid config_firmlinks config_dataless_files config_union_mounts config_file_leases ]
++#  FILESYS_RELEASE= [ FILESYS_BASE ]
++#  FILESYS_DEV =    [ FILESYS_BASE config_iocount_trace ]
++#  FILESYS_DEBUG =  [ FILESYS_BASE config_iocount_trace ]
++#  NFS =            [ nfsserver ]
++#  SKYWALK_BASE =   [ skywalk config_nexus_user_pipe config_nexus_kernel_pipe config_nexus_monitor config_nexus_flowswitch config_nexus_netif ]
++#  SKYWALK_RELEASE = [ SKYWALK_BASE ]
++#  SKYWALK_DEV =    [ SKYWALK_BASE ]
++#  SKYWALK_DEBUG =  [ SKYWALK_BASE ]
++#  NETWORKING =     [ inet bpfilter dummynet traffic_mgt sendfile ah_all_crypto bond vlan gif stf ifnet_input_chk config_mbuf_jumbo if_bridge MULTIPATH if_fake remote_vif ]
++#  NETWORKING_RELEASE = [ NETWORKING ]
++#  NETWORKING_DEV = [ NETWORKING_RELEASE packet_mangler if_headless ]
++#  NETWORKING_DEBUG = [ NETWORKING_DEV ]
++#  VPN =            [ ipsec flow_divert necp content_filter ]
++#  PF =             [ pf pflog ]
++#  MULTIPATH =      [ multipath mptcp ]
++#if SOC_CONFIG_t8020 || SOC_IS_VIRTUALIZED
++#  HIBERNATION =    [ ]
++#else /*!(SOC_CONFIG_t8020 || SOC_IS_VIRTUALIZED)*/
++#  HIBERNATION =    [ ]
++#endif /*SOC_CONFIG_t8020 || SOC_IS_VIRTUALIZED*/
++#  IOKIT_BASE =     [ iokit iokitcpp no_kernel_hid config_sleep iokitstats HIBERNATION ]
++#  IOKIT_RELEASE =  [ IOKIT_BASE ]
++#  IOKIT_DEV =      [ IOKIT_BASE iotracking ]
++#  IOKIT_DEBUG =    [ IOKIT_BASE iotracking ]
++#  LIBKERN_BASE =   [ libkerncpp config_blocks config_kec_fips crypto_sha2 config_img4 ]
++#  LIBKERN_RELEASE =[ LIBKERN_BASE zlib ]
++#  LIBKERN_DEV =    [ LIBKERN_BASE zlib iotracking ]
++#  LIBKERN_DEBUG =  [ LIBKERN_BASE zlib iotracking ]
++#  PERF_DBG_BASE =  [ config_dtrace mach_kdp config_serial_kdp kdp_interactive_debugging config_kdp_coredump_encryption config_pervasive_energy PERFMON_BASE kperf kpc ]
++#  PERF_DBG_RELEASE=[ PERF_DBG_BASE ist_kdebug ]
++#  PERF_DBG_DEV =   [ PERF_DBG_BASE lock_stats zleaks alternate_debugger sched_hygiene_debug config_debug_syscall_rejection config_iotrace ]
++#  PERF_DBG_DEBUG = [ PERF_DBG_BASE lock_stats zleaks alternate_debugger sched_hygiene_debug config_debug_syscall_rejection config_iotrace ]
++#if SOC_IS_VIRTUALIZED
++#  PARAVIRT_BASE =  [ config_pv_ticket ]
++#else
++#  PARAVIRT_BASE =  [ ]
++#endif /*SOC_IS_VIRTUALIZED*/
++#  MACH_BASE =      [ mach config_ecc_logging vc_progress_white importance_inheritance config_atm config_coalitions config_iosched config_sysdiagnose config_telemetry config_mach_bridge_recv_time config_quiesce_counter config_arm_pfz config_user_notification phys_write_acct config_service_port_info config_voucher_deprecated PARAVIRT_BASE config_ledger_interval_max ]
++#  MACH_RELEASE =   [ MACH_BASE ]
++#  MACH_DEV =       [ MACH_BASE config_io_accounting importance_trace ]
++#  MACH_DEBUG =     [ MACH_BASE config_io_accounting importance_trace importance_debug ]
++#  SCHED_BASE =     [ config_sched_traditional config_sched_multiq config_sched_deferred_ast config_clutch config_sched_sfi config_sched_auto_join config_preadopt_tg ]
++#  SCHED_RELEASE =  [ SCHED_BASE ]
++#  SCHED_DEV =      [ SCHED_BASE ]
++#  SCHED_DEBUG =    [ SCHED_BASE config_sched_grrr config_sched_proto ]
++#  VM_BASE =        [ vm_pressure_events memorystatus config_code_decryption encrypted_swap config_deferred_reclaim ]
++#  VM_RELEASE =     [ VM_BASE ]
++#  VM_DEV =         [ VM_BASE dynamic_codesigning pgzalloc ]
++#  VM_DEBUG =       [ VM_BASE dynamic_codesigning pgzalloc ]
++#  VM_KASAN =       [ VM_BASE dynamic_codesigning config_kasan config_ubsan config_kcov config_ksancov kernel_tbi ]
++#  SECURITY =       [ config_macf config_audit kernel_integrity config_csr config_csr_from_dt config_setuid config_kas_info config_secure_bsd_root config_arcade config_supplemental_signatures second_static_trust_cache reslide_shared_cache ]
++#  BASE =           [ PF VPN SECURITY NFS ]
++#  RELEASE =        [ BASE KERNEL_RELEASE BSD_RELEASE FILESYS_RELEASE SKYWALK_RELEASE NETWORKING_RELEASE IOKIT_RELEASE LIBKERN_RELEASE    PERF_DBG_RELEASE MACH_RELEASE SCHED_RELEASE VM_RELEASE ]
++#  DEVELOPMENT =    [ BASE KERNEL_DEV     BSD_DEV     FILESYS_DEV     SKYWALK_DEV     NETWORKING_DEV     IOKIT_DEV     LIBKERN_DEV        PERF_DBG_DEV     MACH_DEV     SCHED_DEV     VM_DEV     ]
++#  DEBUG =          [ BASE KERNEL_DEBUG   BSD_DEBUG   FILESYS_DEBUG   SKYWALK_DEBUG   NETWORKING_DEBUG   IOKIT_DEBUG   LIBKERN_DEBUG      PERF_DBG_DEBUG   MACH_DEBUG   SCHED_DEBUG   VM_DEBUG   ]
++#  KASAN =          [ BASE KERNEL_DEV     BSD_DEV     FILESYS_DEV     SKYWALK_DEV     NETWORKING_DEV     IOKIT_DEV     LIBKERN_DEV        PERF_DBG_DEV     MACH_DEV     SCHED_DEV     VM_KASAN   ]
++#
++######################################################################
++#
++machine		"arm64"						# <arm64>
++
++makeoptions	OSFMK_MACHINE = "arm64"				# <mach>
++
++options		COUNT_SYSCALLS		# count bsd system calls 	# <countcalls>
++options     TRASH_VFP_ON_SAVE   # <debug,trash_vfp>
++options		ALTERNATE_DEBUGGER	# <alternate_debugger>
++
++options   CONFIG_VNODES=1024		# <xsmall>
++
++options   CONFIG_FREEZE_SUSPENDED_MIN=4		# <xsmall>
++
++options	  CONFIG_MACH_APPROXIMATE_TIME
++
++options   CONFIG_KERNEL_INTEGRITY		# <kernel_integrity>
++
++options CONFIG_MACF_LAZY_VNODE_LABELS   # Turn on labels, don't preallocate
++
++options CONFIG_HYPERVISOR_PUBLIC   # unrestricted entitlement for hypervisor
++
++options   CONFIG_RESLIDE_SHARED_CACHE		# <reslide_shared_cache>
++options   CONFIG_KERNEL_TBI		# <kernel_tbi>
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -515,7 +515,7 @@
+ 	mov		x20, x0
+ 	mov		x21, #0
+ 
+-#if defined(A5XELTE)
++#if defined(A5XELTE) && !defined(A50_BUILD)
+ 	/* Earliest XNU-owned physical marker in preserved Samsung log RAM. */
+ 	MOV64	x10, A5_ENTRY_MARKER_PHYS
+ 	MOV64	x11, 0x3145544c45554e58
+@@ -709,7 +709,7 @@
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
+ 
+-#if defined(A5XELTE)
++#if defined(A5XELTE) && !defined(A50_BUILD)
+ 	/* A5_FB_2M_BLOCKS 2 MiB blocks map the scanout buffer VA=PA.
+ 	 * Its L1 index differs from isolated XNU RAM, so this uses one extra
+ 	 * bootstrap L2 page. Mark it write-combined for DECON DMA visibility. */
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -166,7 +166,7 @@
+ 		return false;
+ 	}
+ 	PE_current_console(&video);
+-#if defined(ARM64_BOARD_CONFIG_A5XELTE)
++#if defined(ARM64_BOARD_CONFIG_A5XELTE) && !defined(A50_BUILD)
+ 	/* The loader's DECON handoff scans out this physical XRGB8888 buffer.
+ 	 * It does not fill boot_args.Video, so PE_current_console is empty.
+ 	 * Keep the physical address out of the donor path. */
+@@ -332,7 +332,7 @@
+ sweet_fb_wait_frame_done(void)
+ {
+ 	if (sweet_fb_decon == 0) {
+-		sweet_fb_decon = ml_io_map(0x12860000, 0x1000);
++		sweet_fb_decon = ml_io_map(A5_DECON_BASE, 0x1000);
+ 		if (sweet_fb_decon == 0) {
+ 			return;
+ 		}
+--- a/pexpert/arm/pe_serial.c
++++ b/pexpert/arm/pe_serial.c
+@@ -874,7 +874,9 @@
+ 	uint32_t const *val;
+ 	unsigned int size;
+ 
+-	#if defined(A5XELTE)
++	#if defined(A50_BUILD)
++	if (SecureDTFindEntry("name", "a50-fbcon", &entry) != kSuccess ||
++	#elif defined(A5XELTE)
+ 	if (SecureDTFindEntry("name", "a5xelte-fbcon", &entry) != kSuccess ||
+ #else
+ 	if (SecureDTFindEntry("name", "sweet-fbcon", &entry) != kSuccess ||
+--- a/bsd/dev/a5xelte_keys.c
++++ b/bsd/dev/a5xelte_keys.c
+@@ -20,6 +20,8 @@
+ 
+ #if defined(DREAMLTE)
+ #define A5_ALIVE_PA 0x164b0000u            /* Exynos 8895 pinctrl ALIVE */
++#elif defined(A50_BUILD)
++#define A5_ALIVE_PA 0x11850000u            /* Exynos 9610 pinctrl ALIVE */
+ #else
+ #define A5_ALIVE_PA 0x139b0000u
+ #endif
+@@ -39,7 +41,16 @@
+ 	return value;
+ }
+ 
+-#if defined(DREAMLTE)
++#if defined(A50_BUILD)
++/*
++ * Galaxy A50 (Samsung a50 DT gpio-keys, all active low): Power GPA1-7,
++ * Volume Up GPA1-5, Volume Down GPA1-6. GPA1 bank at ALIVE + 0x040,
++ * DAT at +4. The A50 has no Bixby/Home key, so key 3 is absent.
++ */
++typedef uint8_t keys_t;
++#define KEYS_SAMPLE() ((keys_t)a5_keys_read(0x44))
++#define KEYS_PINS { 7, 5, 6, 0xff }
++#elif defined(DREAMLTE)
+ /*
+  * Galaxy S8 (mainline exynos8895-dreamlte.dts gpio-keys, all active low):
+  * Power GPA2-4, Volume Up GPA0-3, Volume Down GPA0-4, Bixby GPA0-6 (used
+@@ -86,6 +97,9 @@
+ 		}
+ 		if (repeated == 2 && stable != sample) {
+ 			for (unsigned key = 0; key < 4; key++) {
++				if (pins[key] == 0xff) {
++					continue;       /* the A50 has no fourth key */
++				}
+ 				keys_t bit = (keys_t)(1u << pins[key]);
+ 				if ((stable ^ sample) & bit) {
+ 					int down = !(sample & bit);
+--- a/bsd/dev/a5xelte_touch.c
++++ b/bsd/dev/a5xelte_touch.c
+@@ -920,11 +920,331 @@
+ }
+ #endif /* DREAMLTE */
+ 
++#if defined(A50_BUILD)
++/*
++ * Galaxy A50 touch: Melfas MMS100 (Samsung DT "melfas,mms_ts") at 0x48 on
++ * i2c_4 (0x13870000). The A50 wires it to gpp1-0/1 (SDA/SCL, TOP pinctrl
++ * 0x139B0000 bank 0x020) and enables its 3.0 V rail with gpg3-1 (TOP bank
++ * 0x120). Its interrupt is gpa0-0 (ALIVE pinctrl 0x11850000, bank 0x020).
++ *
++ * This driver does not touch the HSI2C controller: the A50's I2C4 clock
++ * gate is not documented in the public DT and an unclocked HSI2C access is
++ * a synchronous abort. It bit-bangs I2C on the same two pins as open-drain
++ * GPIOs instead (input+pull-up = released, output-low = driven), which only
++ * needs the pinctrl block S-Boot already leaves on.
++ *
++ * Protocol (Samsung melfas_mss100 MIP 4.0, A50 DT event_info = <8 12>):
++ *   write R0,R1 then repeated-start read N bytes.
++ *   event packet info  0x02/0x10: size = b & 0x7f, category = b >> 7
++ *   event packet data  0x02/0x11
++ *   12-byte screen packet: [0] id, [1] bit0 action, [2..4] x/y,
++ *   [5..6] z, [7] size, [8..9] pressure, [10..11] major/minor.
++ * The A50 panel reports 0..4095 on both axes (Samsung DT max_x_y).
++ */
++#define A50_TOP_PA		0x139b0000u
++#define A50_ALIVE_PA		0x11850000u
++#define A50_GPP1		0x020u	/* CON, DAT, PUD */
++#define A50_GPG3		0x120u
++#define A50_GPA0		0x020u
++#define A50_TS_ADDR		0x48u
++#define A50_EVENT_SIZE		12u
++#define A50_FINGERS		5
++
++static vm_offset_t a50_top, a50_alive;
++static int a50_touch_sleep;
++static bool a50_touch_down[A50_FINGERS];
++static uint16_t a50_touch_x[A50_FINGERS], a50_touch_y[A50_FINGERS];
++
++static void
++a50_pin_con(uint32_t bank, unsigned pin, uint32_t nibble)
++{
++	uint32_t v = a5touch_read(a50_top, bank);
++	v = (v & ~(0xfu << (4 * pin))) | ((nibble & 0xf) << (4 * pin));
++	a5touch_write(a50_top, bank, v);
++}
++
++static void
++a50_pin_pud(uint32_t bank, unsigned pin, uint32_t pud)
++{
++	uint32_t v = a5touch_read(a50_top, bank + 8);
++	v = (v & ~(3u << (2 * pin))) | ((pud & 3u) << (2 * pin));
++	a5touch_write(a50_top, bank + 8, v);
++}
++
++static void
++a50_sda_release(void)
++{
++	a50_pin_con(A50_GPP1, 0, 0);	/* input */
++	a50_pin_pud(A50_GPP1, 0, 3);	/* pull-up */
++}
++
++static void
++a50_sda_low(void)
++{
++	a50_pin_pud(A50_GPP1, 0, 0);
++	a50_pin_con(A50_GPP1, 0, 1);	/* output */
++	a5touch_write(a50_top, A50_GPP1 + 4,
++	    a5touch_read(a50_top, A50_GPP1 + 4) & ~1u);
++}
++
++static void
++a50_scl_release(void)
++{
++	a50_pin_con(A50_GPP1, 1, 0);
++	a50_pin_pud(A50_GPP1, 1, 3);
++}
++
++static void
++a50_scl_low(void)
++{
++	a50_pin_pud(A50_GPP1, 1, 0);
++	a50_pin_con(A50_GPP1, 1, 1);
++	a5touch_write(a50_top, A50_GPP1 + 4,
++	    a5touch_read(a50_top, A50_GPP1 + 4) & ~2u);
++}
++
++static int
++a50_sda_read(void)
++{
++	a50_sda_release();
++	return (int)((a5touch_read(a50_top, A50_GPP1 + 4) >> 0) & 1u);
++}
++
++static void
++a50_i2c_delay(void)
++{
++	IODelay(4);
++}
++
++static void
++a50_i2c_start(void)
++{
++	a50_sda_release();
++	a50_scl_release();
++	a50_i2c_delay();
++	a50_sda_low();
++	a50_i2c_delay();
++	a50_scl_low();
++	a50_i2c_delay();
++}
++
++static void
++a50_i2c_stop(void)
++{
++	a50_sda_low();
++	a50_i2c_delay();
++	a50_scl_release();
++	a50_i2c_delay();
++	a50_sda_release();
++	a50_i2c_delay();
++}
++
++/* Returns 1 when the slave acknowledged. */
++static int
++a50_i2c_write_byte(uint8_t b)
++{
++	for (int i = 7; i >= 0; i--) {
++		if (b & (1u << i)) {
++			a50_sda_release();
++		} else {
++			a50_sda_low();
++		}
++		a50_i2c_delay();
++		a50_scl_release();
++		a50_i2c_delay();
++		a50_scl_low();
++		a50_i2c_delay();
++	}
++	a50_sda_release();
++	a50_i2c_delay();
++	a50_scl_release();
++	a50_i2c_delay();
++	int ack = !a50_sda_read();
++	a50_scl_low();
++	a50_i2c_delay();
++	return ack;
++}
++
++static uint8_t
++a50_i2c_read_byte(int ack)
++{
++	uint8_t b = 0;
++	a50_sda_release();
++	for (int i = 7; i >= 0; i--) {
++		a50_i2c_delay();
++		a50_scl_release();
++		a50_i2c_delay();
++		b = (uint8_t)((b << 1) | (a50_sda_read() & 1));
++		a50_scl_low();
++		a50_i2c_delay();
++	}
++	if (ack) {
++		a50_sda_low();
++	} else {
++		a50_sda_release();
++	}
++	a50_i2c_delay();
++	a50_scl_release();
++	a50_i2c_delay();
++	a50_scl_low();
++	a50_i2c_delay();
++	return b;
++}
++
++/* MIP read: 2-byte register address, repeated start, N bytes. */
++static bool
++a50_mip_read(uint8_t r0, uint8_t r1, uint8_t *buf, unsigned len)
++{
++	a50_i2c_start();
++	if (!a50_i2c_write_byte((uint8_t)(A50_TS_ADDR << 1)) ||
++	    !a50_i2c_write_byte(r0) || !a50_i2c_write_byte(r1)) {
++		a50_i2c_stop();
++		return false;
++	}
++	a50_i2c_start();
++	if (!a50_i2c_write_byte((uint8_t)((A50_TS_ADDR << 1) | 1))) {
++		a50_i2c_stop();
++		return false;
++	}
++	for (unsigned i = 0; i < len; i++) {
++		buf[i] = a50_i2c_read_byte(i + 1 < len);
++	}
++	a50_i2c_stop();
++	return true;
++}
++
++static void
++a50_touch_wait(unsigned ms)
++{
++	uint64_t deadline;
++	clock_interval_to_deadline(ms, NSEC_PER_MSEC, &deadline);
++	(void)assert_wait_deadline(&a50_touch_sleep, THREAD_UNINT, deadline);
++	thread_block(THREAD_CONTINUE_NULL);
++}
++
++static void
++a50_touch_report(const uint8_t *p)
++{
++	int id = (p[0] & 0x0fu) - 1;
++	int action = p[1] & 1u;
++	unsigned x = ((unsigned)(p[2] & 0x0fu) << 8) | p[3];
++	unsigned y = (((unsigned)p[2] >> 4) << 8) | p[4];
++	if (id < 0 || id >= A50_FINGERS) {
++		return;
++	}
++	/* SweetHIDTouch's digitizer grid is 1080x1920. */
++	x = x * 1080u / 4096u;
++	y = y * 1920u / 4096u;
++	if (action) {
++		if (!a50_touch_down[id]) {
++			printf("A50 TOUCH: down id=%d x=%u y=%u\n", id, x, y);
++		}
++		a50_touch_down[id] = true;
++		a50_touch_x[id] = (uint16_t)x;
++		a50_touch_y[id] = (uint16_t)y;
++		sweet_hid_touch(id, 1, (int)x, (int)y);
++	} else if (a50_touch_down[id]) {
++		a50_touch_down[id] = false;
++		sweet_hid_touch(id, 0, a50_touch_x[id], a50_touch_y[id]);
++	}
++}
++
++static void
++a50_touch_thread(void *arg, wait_result_t result)
++{
++	uint8_t info = 0, buf[200];
++	unsigned failures = 0;
++	(void)arg;
++	(void)result;
++	printf("A50 TOUCH: worker started\n");
++	a50_touch_wait(30);	/* tsp_ldo_en settling */
++	/* The controller answers 0xA0 once its boot firmware is ready. */
++	for (unsigned i = 0; i < 200; i++) {
++		if (a50_mip_read(0x06, 0x00, &info, 1) && info == 0xa0) {
++			break;
++		}
++		a50_touch_wait(10);
++	}
++	if (info == 0xa0) {
++		char name[17] = {0};
++		if (a50_mip_read(0x01, 0x00, (uint8_t *)name, 16)) {
++			printf("A50 TOUCH: MMS100 '%s'\n", name);
++		}
++	} else {
++		printf("A50 TOUCH: controller not ready (status %#x)\n", info);
++	}
++	for (;;) {
++		/* gpa0-0 is active low while events are queued. */
++		if ((a5touch_read(a50_alive, A50_GPA0 + 4) & 1u)) {
++			a50_touch_wait(8);
++			continue;
++		}
++		if (!a50_mip_read(0x02, 0x10, &info, 1)) {
++			if (++failures <= 8 || !(failures & 255)) {
++				printf("A50 TOUCH: packet info read failed (%u)\n", failures);
++			}
++			a50_touch_wait(20);
++			continue;
++		}
++		unsigned size = info & 0x7fu;
++		if (!size || size > sizeof(buf)) {
++			a50_touch_wait(4);
++			continue;
++		}
++		if (!a50_mip_read(0x02, 0x11, buf, size)) {
++			if (++failures <= 8 || !(failures & 255)) {
++				printf("A50 TOUCH: packet read failed (%u)\n", failures);
++			}
++			a50_touch_wait(20);
++			continue;
++		}
++		if (!(info & 0x80)) {	/* touch category */
++			for (unsigned i = 0; i + A50_EVENT_SIZE <= size; i += A50_EVENT_SIZE) {
++				a50_touch_report(buf + i);
++			}
++		}
++		failures = 0;
++	}
++}
++
++static void
++a50_touch_start(void)
++{
++	thread_t thread;
++	int enabled = 1;
++	(void)PE_parse_boot_argn("a50touch", &enabled, sizeof(enabled));
++	if (!enabled) {
++		printf("A50 TOUCH: disabled\n");
++		return;
++	}
++	a50_top = ml_io_map(A50_TOP_PA, 0x1000);
++	a50_alive = ml_io_map(A50_ALIVE_PA, 0x1000);
++	if (!a50_top || !a50_alive) {
++		printf("A50 TOUCH: MMIO mapping failed\n");
++		return;
++	}
++	/* tsp_ldo_en: gpg3-1, active high, powers the 3.0 V touch rail. */
++	a50_pin_pud(A50_GPG3, 1, 0);
++	a50_pin_con(A50_GPG3, 1, 1);
++	a5touch_write(a50_top, A50_GPG3 + 4,
++	    a5touch_read(a50_top, A50_GPG3 + 4) | 2u);
++	a50_sda_release();
++	a50_scl_release();
++	if (kernel_thread_start(a50_touch_thread, NULL, &thread) == KERN_SUCCESS) {
++		thread_deallocate(thread);
++	} else {
++		printf("A50 TOUCH: thread start failed\n");
++	}
++}
++#endif /* A50_BUILD */
++
+ void
+ a5xelte_touch_probe(void)
+ {
+ #if defined(DREAMLTE)
+ 	dreamlte_touch_start();   /* the A5 path below stays off */
++#elif defined(A50_BUILD)
++	a50_touch_start();        /* MMS100 on bit-banged I2C4 */
+ #endif
+ 	int enabled = A5_TOUCH_DEFAULT; /* A5 touch: off on the S8 */
+ 	int log_contacts = 0;
+--- a/iokit/Kernel/IOPlatformExpert.cpp
++++ b/iokit/Kernel/IOPlatformExpert.cpp
+@@ -1369,11 +1369,13 @@
+ 		gIOPlatform->getUTCTimeOfDay(secs, &nsecs);
+ 	}
+ #if defined(ARM64_BOARD_CONFIG_A5XELTE)
+-	uint64_t s8rtc = 0;
+-	if (*secs == 0 && PE_parse_boot_argn("s8rtc", &s8rtc, sizeof(s8rtc)) && s8rtc) {
++	uint64_t rtcboot = 0;
++	bool have_rtc = PE_parse_boot_argn("a50rtc", &rtcboot, sizeof(rtcboot)) ||
++	    PE_parse_boot_argn("s8rtc", &rtcboot, sizeof(rtcboot));
++	if (*secs == 0 && have_rtc && rtcboot) {
+ 		uint64_t ns;
+ 		absolutetime_to_nanoseconds(mach_absolute_time(), &ns);
+-		*secs = (clock_sec_t)(s8rtc + ns / NSEC_PER_SEC);
++		*secs = (clock_sec_t)(rtcboot + ns / NSEC_PER_SEC);
+ 		nsecs = (clock_nsec_t)(ns % NSEC_PER_SEC);
+ 	}
+ #endif
+--- a/iokit/Kernel/arm/SweetBattery.cpp
++++ b/iokit/Kernel/arm/SweetBattery.cpp
+@@ -12,13 +12,18 @@
+ #include <IOKit/pwr_mgt/IOPMPowerSource.h>
+ #include <libkern/c++/OSCollectionIterator.h>
+ #include <pexpert/pexpert.h>
+-#if defined(ARM64_BOARD_CONFIG_A5XELTE)
++#if defined(ARM64_BOARD_CONFIG_A5XELTE) && !defined(A50_BUILD)
+ /* Galaxy S8: MAX77865 fuel gauge (bsd/dev/a5xelte_touch.c). */
+ extern "C" int dreamlte_battery_read(unsigned *percent, unsigned *mv, int *ma,
+     int *external, int *charging, int *full);
+ static inline int sweet_spmi_init(void) { return -1; }
+ static inline int sweet_spmi_read(unsigned, unsigned, uint8_t *) { return -1; }
+ #define SWEET_BAT_MAH 3000u
++#elif defined(A50_BUILD)
++/* Galaxy A50: S2MPU09 gauge not wired up yet; static fallback. */
++static inline int sweet_spmi_init(void) { return -1; }
++static inline int sweet_spmi_read(unsigned, unsigned, uint8_t *) { return -1; }
++#define SWEET_BAT_MAH 4000u
+ #else
+ /* bsd/dev/sweet_spmi.c */
+ extern "C" int sweet_spmi_init(void);
+@@ -216,7 +221,7 @@
+ void
+ SweetBattery::poll(void)
+ {
+-#if defined(ARM64_BOARD_CONFIG_A5XELTE)
++#if defined(ARM64_BOARD_CONFIG_A5XELTE) && !defined(A50_BUILD)
+ 	unsigned pct = 0, s8mv = 0;
+ 	int s8ma = 0, ext = 0, chg = 0, full = 0;
+ 	if (fReal && dreamlte_battery_read(&pct, &s8mv, &s8ma, &ext, &chg, &full) == 0) {
+@@ -224,6 +229,8 @@
+ 	} else {
+ 		publish(100, 4200, 0, true, true, false, true, false, false);
+ 	}
++#elif defined(A50_BUILD)
++	publish(100, 4200, 0, true, true, false, true, false, false);
+ #else
+ 	uint8_t type, present, usb, path, charger, error, temperature;
+ 	uint16_t rawVoltage;
+@@ -282,14 +289,16 @@
+ 	if (!IOPMPowerSource::start(provider)) {
+ 		return false;
+ 	}
+-#if defined(ARM64_BOARD_CONFIG_A5XELTE)
++#if defined(ARM64_BOARD_CONFIG_A5XELTE) && !defined(A50_BUILD)
+ 	int real = 1;
+ #else
+ 	int real = 0;
+ #endif
+ 	(void)PE_parse_boot_argn("sweetbattery", &real, sizeof(real));
+-#if defined(ARM64_BOARD_CONFIG_A5XELTE)
++#if defined(ARM64_BOARD_CONFIG_A5XELTE) && !defined(A50_BUILD)
+ 	fReal = real == 1;
++#elif defined(A50_BUILD)
++	fReal = false;
+ #else
+ 	fReal = real == 1 && sweet_spmi_init() == 0;
+ #endif
+--- a/bsd/dev/sweet_ufs.c
++++ b/bsd/dev/sweet_ufs.c
+@@ -36,6 +36,9 @@
+ #include <vm/pmap.h>
+ #include <vm/vm_kern.h>
+ #include <pexpert/pexpert.h>
++#if defined(ARM64_BOARD_CONFIG_A5XELTE)
++#include <pexpert/arm64/board_config.h>
++#endif
+ #include <pexpert/device_tree.h>
+ #include <libkern/libkern.h>
+ #include <machine/atomic.h>
+@@ -84,7 +87,7 @@
+ #define EXYNOS_UFS              1
+ #define VS_UTRL_NEXUS_TYPE      0x40
+ #define UFS_WLUN_DEVICE         0xd0
+-#define UFS_ADT_NODE            "/dreamlte-ufs"
++#define UFS_ADT_NODE            A5_UFS_NODE
+ #define UFS_DEFAULT_PART        "USERDATA"
+ #define PRDT_BYTES(field)       (field)
+ #else
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -39,7 +39,7 @@
+     "     'IOClass'         = SweetPlatformExpert;"
+     "     'IOProviderClass' = IOPlatformExpertDevice;"
+ #if defined(ARM64_BOARD_CONFIG_A5XELTE)
+-    "     'IONameMatch'     = ('samsung,a5xelte', 'samsung,dreamlte');"
++    "     'IONameMatch'     = ('samsung,a5xelte', 'samsung,dreamlte', 'samsung,a50');"
+ #else
+     "     'IONameMatch'     = 'xiaomi,sweet';"
+ #endif
+@@ -74,7 +74,7 @@
+     "     'IOClass'         = AppleCLCD;"
+     "     'IOProviderClass' = IOPlatformDevice;"
+ #if defined(ARM64_BOARD_CONFIG_A5XELTE)
+-    "     'IONameMatch'     = ('samsung,a5xelte-display', 'samsung,dreamlte-display');"
++    "     'IONameMatch'     = ('samsung,a5xelte-display', 'samsung,dreamlte-display', 'samsung,a50-display');"
+ #else
+     "     'IONameMatch'     = 'sweet,display';"
+ #endif

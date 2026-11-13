@@ -6,6 +6,12 @@ This project ports Apple's open-source XNU kernel (xnu-8796, the iOS 16 generati
 
 > ⚠️ Experimental bring-up, not a usable phone OS. It is very slow and much is missing (see [Known bugs](#known-bugs)). Installing it **erases the USERDATA partition** (all Android data). Exynos **SM-G950F** only.
 
+## Galaxy A50 port (in progress)
+
+This tree also carries a **Samsung Galaxy A50 (SM-A505F, Exynos 9610, `a50`)** target, ported from the S8 work: `MACHINE_CONFIG=A50`, `shim/a50`, `tools/mkadt_a50.py`, and the generated `xnu/patches/0129-a50.patch`. It reuses the A5XELTE XNU config and adds the A50 display, keys, touch, RTC and UFS facts.
+
+> The A50 target has **not booted on a phone**. The XNU patch applies cleanly, the ADT generates, and the loader compiles and links as an AArch64 Image with no relocations. An XNU `MACHINE_CONFIG=A50` build and hardware tests are still to do. See [docs/a50-port.md](docs/a50-port.md) for the hardware map, risks and what was verified, and [docs/a50-install.md](docs/a50-install.md) for the build/flash outline.
+
 ## What works
 
 | Area | State |
@@ -81,6 +87,8 @@ S-Boot (stock Samsung bootloader, EL1, MMU off)
 | `tools/mkiosroot.sh`, `tools/dreamlte/finish-iosroot.sh` | iOS root image build |
 | `tools/dreamlte/flash-chunks.ps1` | Writes an image to USERDATA in verified chunks |
 | `tools/dreamlte/pull-sweetlog.ps1` | Pulls the boot logs from TWRP |
+| `shim/a50/`, `tools/a50/`, `tools/mkadt_a50.py` | Galaxy A50 loader, touch driver, ADT and XNU layer |
+| `A50_PROGRESS.md` | A50 port log: hardware facts, checks, open risks |
 | `DREAMLTE_PROGRESS.md` | Port log: hardware facts, every boot |
 
 ## Authors

@@ -13,4 +13,10 @@ shim/a5xelte/out/
 shim/a5xelte/out4k/
 shim/a5xelte/outxnu/
 shim/dreamlte/out/
+# A50 local XNU reconstruction, generated ADT/loader, and the temporary Zig
+# toolchain used to cross-check the loader (not source).
+.tmp-a50-xnu/
+.tmp-a50-research/
+shim/a50/out/
+shim/a50/out-zig/
 logs/
