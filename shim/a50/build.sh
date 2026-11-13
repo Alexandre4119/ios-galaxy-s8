@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build the Galaxy A50 XNU loader (Samsung S-Boot "kernel" Image).
 # Optionally pack a BOOT image: build.sh STOCK_BOOT.img PAYLOAD.bin OUT.img
-# (PAYLOAD from tools/mkpayload.py; STOCK_BOOT supplies header and DTBH).
+# (PAYLOAD from tools/mkpayload.py; STOCK_BOOT supplies the A50 v1 header).
 set -euo pipefail
 cd "$(dirname "$0")"
 CC=aarch64-linux-gnu-gcc
@@ -29,6 +29,6 @@ echo "out/Image: $(stat -c %s out/Image) bytes"
 if [ $# = 3 ]; then
 	PY=python3
 	python3 -c '' >/dev/null 2>&1 || PY=python
-	$PY ../../tools/dreamlte_mkboot.py "$1" out/Image "$2" "$3"
+	$PY ../../tools/a50/mkboot_a50.py "$1" out/Image "$2" "$3"
 	sha256sum "$3"
 fi

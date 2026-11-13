@@ -21,4 +21,4 @@ canvas=1080x2340
 $PY "$repo/tools/mkadt_a50.py" "$work/a50.adt" --canvas "$canvas"
 $PY "$repo/tools/mkpayload.py" "$kernel" "$work/a50.adt" "$work/payload.bin" --cmdline "$args"
 bash "$repo/shim/a50/build.sh" "$stock" "$work/payload.bin" "$out"
-$PY "$repo/tools/dreamlte_bootimg_info.py" "$out" | head -4
+$PY "$repo/tools/a50/bootimg_info.py" "$out" | head -4
