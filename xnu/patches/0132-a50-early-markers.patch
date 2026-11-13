@@ -1,17 +1,13 @@
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -504,6 +504,28 @@
-  * Cold boot init routine.  Called from __start
-  *   x0 - Boot args
-  */
+@@ -512,6 +512,23 @@
+ 	msr		OSLAR_EL1, xzr
+ 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
+ 
 +#if defined(A50_BUILD)
-+/*
-+ * Diagnostic A50 framebuffer band.  Runs both before and after the MMU is
-+ * enabled; A5_FB_PHYS is identity-mapped by the A50 bootstrap tables.
-+ */
-+.macro A50_MARK row, color
-+	MOV64	x10, (A5_FB_PHYS + (ow) * A5_FB_STRIDE + 240 * 4)
-+	MOV64	x11, \color
++	/* XNU entry reached */
++	MOV64	x10, (A5_FB_PHYS + 300 * A5_FB_STRIDE + 240 * 4)
++	MOV64	x11, 0xffff0000
 +	mov	x12, #21
 +	mov	x15, #A5_FB_STRIDE
 +1:	mov	x14, x10
@@ -23,52 +19,84 @@
 +	subs	x12, x12, #1
 +	b.ne	1b
 +	dsb	sy
-+.endm
-+#endif
-+
- 	.align 2
- 	.globl EXT(start_first_cpu)
- LEXT(start_first_cpu)
-@@ -512,6 +534,10 @@
- 	msr		OSLAR_EL1, xzr
- 	msr		DAIFSet, #(DAIFSC_ALL)				// Disable all interrupts
- 
-+#if defined(A50_BUILD)
-+	A50_MARK 300, 0xffff0000		/* XNU entry reached */
 +#endif
 +
  	mov		x20, x0
  	mov		x21, #0
  
-@@ -729,6 +755,10 @@
+@@ -729,6 +746,24 @@
  	str		x11, [x12], #(1 << TTE_SHIFT)
  	subs	x13, x13, #1
  	b.ne	La5_fb_attr
 +
 +#if defined(A50_BUILD)
-+	A50_MARK 340, 0xffff8000		/* framebuffer mapping built */
++	/* framebuffer bootstrap map built */
++	MOV64	x10, (A5_FB_PHYS + 340 * A5_FB_STRIDE + 240 * 4)
++	MOV64	x11, 0xffff8000
++	mov	x12, #21
++	mov	x15, #A5_FB_STRIDE
++1:	mov	x14, x10
++	mov	x13, #36
++2:	str	w11, [x14], #4
++	subs	x13, x13, #1
++	b.ne	2b
++	add	x10, x10, x15
++	subs	x12, x12, #1
++	b.ne	1b
++	dsb	sy
 +#endif
++
  #endif
  
  #if defined(SWEET) && !defined(A5XELTE)
-@@ -890,6 +920,10 @@
+@@ -890,6 +925,24 @@
  	MSR_SCTLR_EL1_X0
  	isb		sy
  
 +#if defined(A50_BUILD)
-+	A50_MARK 360, 0xffff00ff		/* MMU + framebuffer write OK */
++	/* MMU + framebuffer write OK */
++	MOV64	x10, (A5_FB_PHYS + 360 * A5_FB_STRIDE + 240 * 4)
++	MOV64	x11, 0xffff00ff
++	mov	x12, #21
++	mov	x15, #A5_FB_STRIDE
++1:	mov	x14, x10
++	mov	x13, #36
++2:	str	w11, [x14], #4
++	subs	x13, x13, #1
++	b.ne	2b
++	add	x10, x10, x15
++	subs	x12, x12, #1
++	b.ne	1b
++	dsb	sy
 +#endif
++
 +
  #if defined(A5XELTE)
  	/* Blue block: the 4 KiB MMU is active and the framebuffer alias works. */
  	MOV64	x10, (A5_FB_PHYS + 120 * A5_FB_STRIDE + 240 * 4)
-@@ -907,6 +941,12 @@
+@@ -907,6 +960,28 @@
  	subs	x12, x12, #1
  	b.ne	La5_mmu_row
  	dsb		sy
 +
 +#if defined(A50_BUILD)
-+	A50_MARK 380, 0xffffffff		/* blue marker write survived */
++	/* blue post-MMU marker survived */
++	MOV64	x10, (A5_FB_PHYS + 380 * A5_FB_STRIDE + 240 * 4)
++	MOV64	x11, 0xffffffff
++	mov	x12, #21
++	mov	x15, #A5_FB_STRIDE
++1:	mov	x14, x10
++	mov	x13, #36
++2:	str	w11, [x14], #4
++	subs	x13, x13, #1
++	b.ne	2b
++	add	x10, x10, x15
++	subs	x12, x12, #1
++	b.ne	1b
++	dsb	sy
++#endif
++
++#if defined(A50_BUILD)
 +9:	b	9b				/* controlled diagnostic stop */
 +#endif
 +
