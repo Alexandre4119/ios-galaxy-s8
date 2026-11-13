@@ -1,0 +1,22 @@
+--- a/pexpert/pexpert/arm64/A5XELTE.h
++++ b/pexpert/pexpert/arm64/A5XELTE.h
+@@ -32,7 +32,7 @@
+  */
+ #if defined(A50_BUILD)
+ #define A50                           1
+-#define A5_FB_PHYS                    0           /* loader reads DECON IDMA0 */
++#define A5_FB_PHYS                    0xca000000  /* S-Boot bootloaderfb */
+ #define A5_FB_WIDTH                   1080
+ #define A5_FB_HEIGHT                  2340
+ #define A5_FB_STRIDE                  4320        /* bytes per row */
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -709,7 +709,7 @@
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
+ 
+-#if defined(A5XELTE) && !defined(A50_BUILD)
++#if defined(A5XELTE)
+ 	/* A5_FB_2M_BLOCKS 2 MiB blocks map the scanout buffer VA=PA.
+ 	 * Its L1 index differs from isolated XNU RAM, so this uses one extra
+ 	 * bootstrap L2 page. Mark it write-combined for DECON DMA visibility. */
