@@ -1,0 +1,12 @@
+--- a/bsd/dev/a5xelte_touch.c
++++ b/bsd/dev/a5xelte_touch.c
+@@ -17,6 +17,9 @@
+ extern vm_offset_t ml_io_map(vm_offset_t, vm_size_t);
+ extern void thread_terminate_self(void);
+ extern void sweet_hid_touch(int finger, int down, int x, int y);
++#if defined(A50_BUILD)
++extern void IODelay(unsigned microseconds);
++#endif
+ void a5xelte_touch_probe(void);
+ static bool a5touch_controller_init(void);
+ static bool a5touch_report_packet(const uint8_t packet[34], unsigned *lines);
