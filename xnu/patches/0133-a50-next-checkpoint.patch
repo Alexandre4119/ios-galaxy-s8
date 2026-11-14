@@ -1,0 +1,37 @@
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -978,10 +978,6 @@
+ 	dsb	sy
+ #endif
+ 
+-#if defined(A50_BUILD)
+-9:	b	9b				/* controlled diagnostic stop */
+-#endif
+-
+ 	/* Preserve the arm_init KVA return address across the text routine. */
+ 	mov	x17, lr
+ 	adr	x0, La5_text_mmu
+@@ -989,6 +985,23 @@
+ 	mov	x2, #288
+ 	bl	La5_draw_text
+ 	mov	lr, x17
++
++#if defined(A50_BUILD)
++	/* XNU MMU ON text draw completed */
++	MOV64	x10, (A5_FB_PHYS + 400 * A5_FB_STRIDE + 240 * 4)
++	MOV64	x11, 0xffffffff
++	mov	x12, #21
++	mov	x15, #A5_FB_STRIDE
++1:	mov	x14, x10
++	mov	x13, #36
++2:	str	w11, [x14], #4
++	subs	x13, x13, #1
++	b.ne	2b
++	add	x10, x10, x15
++	subs	x12, x12, #1
++	b.ne	1b
++	dsb	sy
++#endif
+ #endif
+ 
+ #if !VMAPPLE && !defined(SWEET)
