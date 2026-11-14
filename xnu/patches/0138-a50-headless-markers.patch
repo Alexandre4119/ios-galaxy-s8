@@ -1,0 +1,80 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1825,7 +1825,7 @@
+ #define ARM64_PHYSMAP_ALIGNMENT_PADDING (PTOV_TABLE_SIZE * ARM_TT_TWIG_SIZE)
+ #endif
+ 
+-#if defined(SWEET) && !defined(A5XELTE)
++#if defined(SWEET)
+ /*
+  * The reserved low-globals/kernel region is excluded from VM allocation.
+  * Use the otherwise empty 32MB block above low globals and below gVirtBase
+@@ -1843,7 +1843,13 @@
+ 	tt_entry_t *l2 = (tt_entry_t *)phystokv(l1 & ARM_TTE_TABLE_MASK);
+ 	tt_entry_t *slot = &l2[(va & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT];
+ 	assert(*slot == ARM_TTE_EMPTY);
++#if defined(A5XELTE) && defined(A50_BUILD)
++	*slot = 0xca000000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
++#elif defined(A5XELTE)
++	*slot = 0x67000000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
++#else
+ 	*slot = 0x9c000000ULL | ARM_TTE_VALID | ARM_TTE_TYPE_BLOCK |
++#endif
+ 	    ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) |
+ 	    ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) |
+ 	    ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX;
+@@ -2195,7 +2201,7 @@
+ 
+ 	ml_enable_monitor();
+ 
+-#if defined(SWEET) && !defined(A5XELTE)
++#if defined(SWEET)
+ 	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
+ 	sweet_early_relocate(SWEET_EARLY_FB_VA);
+ #endif
+--- a/osfmk/arm64/sweet_early.c
++++ b/osfmk/arm64/sweet_early.c
+@@ -12,7 +12,8 @@
+ #include <kern/misc_protos.h>
+ 
+ /* The bootstrap TTBR0 maps DECON scanout VA=PA until arm_vm_init. */
+-#define A5_FB ((volatile uint32_t *)(uintptr_t)A5_FB_PHYS)
++static volatile uint32_t *a5_fb = (volatile uint32_t *)(uintptr_t)A5_FB_PHYS;
++#define A5_FB a5_fb
+ #define A5_STRIDE (A5_FB_STRIDE / 4u)
+ #define A5_SCALE 2u
+ #define A5_ROW_HEIGHT (16u * A5_SCALE)
+@@ -78,7 +79,7 @@
+ void
+ sweet_early_mark(unsigned int stage, const char *label)
+ {
+-	if (!a5_active || stage > 7) {
++	if (!a5_active || stage > 24) {
+ 		return;
+ 	}
+ 	a5_string("A5 XNU STAGE ");
+@@ -87,10 +88,6 @@
+ 	a5_string(label);
+ 	sweet_early_putc('\n');
+ 	__asm__ volatile("dsb sy" ::: "memory");
+-	/* arm_vm_init replaces TTBR0; low physical aliases then cease to exist. */
+-	if (stage == 7) {
+-		a5_active = 0;
+-	}
+ }
+ 
+ void
+@@ -109,7 +106,12 @@
+ 	__asm__ volatile("dsb sy" ::: "memory");
+ }
+ 
+-void sweet_early_relocate(uint64_t base) { (void)base; }
++void
++sweet_early_relocate(uint64_t base)
++{
++	a5_fb = (volatile uint32_t *)(uintptr_t)base;
++	__asm__ volatile("dsb sy" ::: "memory");
++}
+ void sweet_early_disable(void) { a5_active = 0; }
+ #elif defined(SWEET)
+ #include <stdint.h>
