@@ -1,0 +1,55 @@
+--- a/pexpert/arm/pe_serial.c
++++ b/pexpert/arm/pe_serial.c
+@@ -956,6 +956,10 @@
+ int
+ serial_init(void)
+ {
++#if defined(A5XELTE)
++	/* A50: mapping the framebuffer console here trips TIMA/RKP. */
++	return 0;
++#endif
+ 	DTEntry         entryP = NULL;
+ 	uint32_t        prop_size;
+ 	vm_offset_t     soc_base;
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -591,7 +591,9 @@
+ 		(void)switch_to_serial_console(); /* Switch into serial mode from video console */
+ 		disableConsoleOutput = FALSE;     /* Allow printfs to happen */
+ 	}
++#if !defined(A5XELTE)
+ 	PE_create_console();
++#endif
+ 
+ 	/* setup console output */
+ 	PE_init_printf(FALSE);
+--- a/pexpert/gen/pe_gen.c
++++ b/pexpert/gen/pe_gen.c
+@@ -127,14 +127,27 @@
+ 
+ extern void console_write_char(char);
+ 
++#if defined(A5XELTE)
++static void
++a5xelte_noop_putc(char c)
++{
++	(void)c;
++}
++#endif
++
+ void
+ PE_init_printf(boolean_t vm_initialized)
+ {
++#if defined(A5XELTE)
++	(void)vm_initialized;
++	PE_putc = a5xelte_noop_putc;
++#else
+ 	if (!vm_initialized) {
+ 		PE_putc = console_write_char;
+ 	} else {
+ 		vcattach();
+ 	}
++#endif
+ }
+ 
+ uint32_t
