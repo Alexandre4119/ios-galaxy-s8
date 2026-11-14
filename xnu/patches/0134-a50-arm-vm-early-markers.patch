@@ -1,0 +1,64 @@
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -1867,8 +1867,9 @@
+ 	/*
+ 	 * Get the virtual and physical kernel-managed memory base from boot_args.
+ 	 */
+ 	gVirtBase = args->virtBase;
++	sweet_early_mark(8, "arm_vm_init entered");
+ 	gPhysBase = args->physBase;
+ #if KASAN
+ 	real_phys_size = args->memSize + (shadow_ptop - shadow_pbase);
+ #else
+@@ -2016,8 +2017,9 @@
+ 	 *
+ 	 *   the so called physical aperture should be statically mapped
+ 	 */
+ 	init_ptpages(cpu_tte, gVirtBase, dynamic_memory_begin, TRUE, ARM_TTE_TABLE_AP(ARM_TTE_TABLE_AP_USER_NA));
++	sweet_early_mark(17, "first init_ptpages done");
+ 
+ #if defined(ARM_LARGE_MEMORY)
+ 	/*
+ 	 * Initialize l1 page table pages :
+@@ -2025,8 +2027,9 @@
+ 	 *   the rest of the kernel virtual address space
+ 	 */
+ 	init_ptpages(cpu_tte, physmap_base, ROUND_L1(physmap_end), TRUE, ARM_DYNAMIC_TABLE_XN | ARM_TTE_TABLE_AP(ARM_TTE_TABLE_AP_USER_NA));
+ #endif
++	sweet_early_mark(18, "second init_ptpages done");
+ 
+ 
+ #if __ARM_KERNEL_PROTECT__
+ 	/* Expand the page tables to prepare for the EL0 mappings. */
+@@ -2140,8 +2143,9 @@
+ 	vm_prelink_sdata = segPRELINKDATAB;
+ 	vm_prelink_edata = segPRELINKDATAB + segSizePRELINKDATA;
+ 
+ 	arm_vm_prot_init(args);
++	sweet_early_mark(9, "arm_vm_prot_init done");
+ 
+ 	/*
+ 	 * Initialize the page tables for the low globals:
+ 	 *   cover this address range:
+@@ -2190,17 +2194,21 @@
+ 	/* phystokv() must still refer to the bootstrap aperture here. */
+ 	sweet_early_map_final();
+ #endif
+ 	arm_vm_physmap_init(args);
++	sweet_early_mark(21, "arm_vm_physmap_init done");
+ 	set_mmu_ttb_alternate(cpu_ttep & TTBR_BADDR_MASK);
++	sweet_early_mark(22, "set_mmu_ttb_alternate done");
+ 
+ 	ml_enable_monitor();
++	sweet_early_mark(23, "ml_enable_monitor done");
+ 
+ #if defined(SWEET) && !defined(A5XELTE)
+ 	/* The final TTBR1 is live; leave the outgoing VA=PA framebuffer alias. */
+ 	sweet_early_relocate(SWEET_EARLY_FB_VA);
+ #endif
+ 	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
++	sweet_early_mark(24, "set_mmu_ttb invalid done");
+ 
+ 	flush_mmu_tlb();
+ 	sweet_early_mark(10, "TTBR0 off; TLB flushed");
+ 	kva_active = TRUE;
