@@ -1,0 +1,14 @@
+--- a/pexpert/arm/pe_serial.c
++++ b/pexpert/arm/pe_serial.c
+@@ -903,6 +903,11 @@
+ #endif
+ 	sweet_early_mark(18, "fbcon mapping returned");
+ 	if (fbcon_base != NULL) {
++#if defined(A5XELTE)
++		/* PE_state.video still points at the bootstrap VA=PA alias, which
++		 * disappears with TTBR0.  Point it at this kernel mapping instead. */
++		PE_state.video.v_baseAddr = (unsigned long)(uintptr_t)fbcon_base;
++#endif
+ 		register_serial_functions(&sweet_fbcon_serial_functions);
+ 	}
+ }
